@@ -13,6 +13,8 @@ import type {ChangedFilesPromise, Options, Repos} from 'types/ChangedFiles';
 
 import git from './git';
 import hg from './hg';
+import svn from './svn';
+
 import throat from 'throat';
 
 // This is an arbitrary number. The main goal is to prevent projects with
@@ -21,6 +23,7 @@ const mutex = throat(5);
 
 const findGitRoot = dir => mutex(() => git.getRoot(dir));
 const findHgRoot = dir => mutex(() => hg.getRoot(dir));
+const findSvnRoot = dir => mutex(() => svn.getRoot(dir));
 
 export const getChangedFilesForRoots = async (
   roots: Array<Path>,
@@ -36,8 +39,13 @@ export const getChangedFilesForRoots = async (
     hg.findChangedFiles(repo, options),
   );
 
+  const svnPromises = Array.from(repos.svn).map(repo =>
+    svn.findChangedFiles(repo, options),
+  );
+
   const changedFiles = (await Promise.all(
-    gitPromises.concat(hgPromises),
+    //gitPromises.concat(hgPromises).concat(svnPromises),
+    [...gitPromises, ...hgPromises, ...svnPromises],
   )).reduce((allFiles, changedFilesInTheRepo) => {
     for (const file of changedFilesInTheRepo) {
       allFiles.add(file);
@@ -57,8 +65,13 @@ export const findRepos = async (roots: Array<Path>): Promise<Repos> => {
     roots.reduce((promises, root) => promises.concat(findHgRoot(root)), []),
   );
 
+  const svnRepos = await Promise.all(
+    roots.reduce((promises, root) => promises.concat(findSvnRoot(root)), []),
+  );
+
   return {
     git: new Set(gitRepos.filter(Boolean)),
     hg: new Set(hgRepos.filter(Boolean)),
+    svn: new Set(svnRepos.filter(Boolean)),
   };
 };
